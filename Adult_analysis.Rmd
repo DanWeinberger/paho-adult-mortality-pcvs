@@ -34,6 +34,8 @@ a1$agey[a1$age_type=='3' & !is.na(a1$age)]  <- a1$age[a1$age_type=='3'& !is.na(a
 a1$agey[a1$age_type=='5' & !is.na(a1$age)]  <- a1$age[a1$age_type=='5'& !is.na(a1$age)]+100
 
 hist(a1$agey)
+
+sum(is.na(a1$agey))/nrow(a1)*100 #What percent of deaths missing an age classification?
 ```
 
 
