@@ -7,19 +7,20 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(foreign)
 library(pbapply)
+library(dplyr)
+
+source('./R/import_brazil_mortality.R')
 ```
 
+Import Data from Brazil
+```{r}
+#import_brazil_func()
+```
 
 ```{r}
-file_list <- list.files(path="./Data/Brazil/Mortality", pattern='*.dbf')
-  
-test1 <- 
- all.res <-
-   pblapply(file_list, function(x){
-     print(x)
-     path1 <- paste0("./Data/Brazil/Mortality/",x)
-     ds <- read.dbf(path1)
-     return(ds)
-   })
+a1 <- readRDS('./Data/Brazil/Mortality/all_deaths_compiled.rds')
+
+
 ```
+
 
