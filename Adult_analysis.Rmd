@@ -61,7 +61,26 @@ a1$icd5 <- as.character(a1$icd5)
 a1$icd6 <- as.character(a1$icd6)
 
 a1$J12_J18_prim <- 0
-a1$J12_J18_prim[substr(a1$icd1,1,3) %in% c('J12','J13','J14','J15','J16','J17','J18')] <- 1
+a1$J12_J18_prim[grep(pattern='J12|J13|J14|J15|J16|J17|J18|J19', a1$icd1)] <- 1 #CHECK THIS
+
+#note: code this more efficiently...
+a1$J12_J18_any <- 0
+a1$J12_J18_any[grep(pattern='J12|J13|J14|J15|J16|J17|J18|J19', a1$icd1)] <- 1
+a1$J12_J18_any[grep(pattern='J12|J13|J14|J15|J16|J17|J18|J19', a1$icd2)] <- 1
+a1$J12_J18_any[grep(pattern='J12|J13|J14|J15|J16|J17|J18|J19', a1$icd3)] <- 1
+a1$J12_J18_any[grep(pattern='J12|J13|J14|J15|J16|J17|J18|J19', a1$icd4)] <- 1
+a1$J12_J18_any[grep(pattern='J12|J13|J14|J15|J16|J17|J18|J19', a1$icd5)] <- 1
+a1$J12_J18_any[grep(pattern='J12|J13|J14|J15|J16|J17|J18|J19', a1$icd6)] <- 1
+
+
+a1$pneumococcal_pneumo=0
+a1$pneumococcal_pneumo[grep(pattern='J13', a1$icd1)] <- 1
+a1$pneumococcal_pneumo[grep(pattern='J13', a1$icd2)] <- 1
+a1$pneumococcal_pneumo[grep(pattern='J13', a1$icd3)] <- 1
+a1$pneumococcal_pneumo[grep(pattern='J13', a1$icd4)] <- 1
+a1$pneumococcal_pneumo[grep(pattern='J13', a1$icd5)] <- 1
+a1$pneumococcal_pneumo[grep(pattern='J13', a1$icd6)] <- 1
+
 
 a1$acm_noj <- 1
 a1$acm_noj[substr(a1$icd1,1,1)=='J' |
@@ -74,12 +93,31 @@ a1$acm_noj[substr(a1$icd1,1,1)=='J' |
 
 ```
 
-Number of deaths due to pneumonia (primary)
 
 ```{r}
 a2 <- a1 %>%
   group_by(agec,monthdate) %>%
-  summarise('J12_J18_prim'=sum(J12_J18_prim), 'acm_noj'=sum(acm_noj))
+  summarise('J12_J18_prim'=sum(J12_J18_prim), 
+            'J12_J18_any'=sum(J12_J18_any),
+            'acm_noj'=sum(acm_noj),
+            'pneumococcal_pneumo'=sum(pneumococcal_pneumo)
+            )
+```
+
+Number of deaths due to pneumonia (any)
+
+```{r, fig.width=8, fig.height=5}
+
+ts.plot.fun(ds=a2,time.var='monthdate', yvar='J12_J18_any', multiple_group = T, group.var='agec', ylab1="Number of deaths due to pneumonia (any)")
+
+```
+
+Number of deaths due to pneumococcal pneumonia (any)
+
+```{r, fig.width=8, fig.height=5}
+
+ts.plot.fun(ds=a2,time.var='monthdate', yvar='pneumococcal_pneumo', multiple_group = T, group.var='agec', ylab1="Number of deaths due to pneumococcal pneumonia")
+
 ```
 
 Proportion of deaths due to pneumonia (primary)
