@@ -1,0 +1,25 @@
+---
+title: "adult_mortality"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(foreign)
+library(pbapply)
+```
+
+
+```{r}
+file_list <- list.files(path="./Data/Brazil/Mortality", pattern='*.dbf')
+  
+test1 <- 
+ all.res <-
+   pblapply(file_list, function(x){
+     print(x)
+     path1 <- paste0("./Data/Brazil/Mortality/",x)
+     ds <- read.dbf(path1)
+     return(ds)
+   })
+```
+
