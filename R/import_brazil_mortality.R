@@ -14,9 +14,8 @@ test2 <- bind_rows(test1) #combine all years
 
 names(test2) <- c('id','dod','dob','age','sex','muni','place_of_death','muni_code','icd2','icd3','icd4','icd5','icd6','icd1','age_type') #rename variables
 
-test2 <- test2[,c('id','dod','dob','sex','muni','place_of_death','muni_code','icd1','icd2','icd3','icd4','icd5','icd6')]
+test2 <- test2[,c('id','dod','dob','sex','muni','place_of_death','muni_code','icd1','icd2','icd3','icd4','icd5','icd6', 'age','age_type')]
 
-test2$agey <- as.numeric(test2$dod - test2$dob)/365
 
 saveRDS(test2,'./Data/Brazil/Mortality/all_deaths_compiled.rds')
 
