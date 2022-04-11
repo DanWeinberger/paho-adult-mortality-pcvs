@@ -17,6 +17,8 @@ names(test2) <- c('id','dod','dob','age','sex','muni','place_of_death','muni_cod
 test2 <- test2[,c('id','dod','dob','sex','muni','place_of_death','muni_code','icd1','icd2','icd3','icd4','icd5','icd6', 'age','age_type')]
 
 
+test2$country <- 'BR'
+
 saveRDS(test2,'./Data/Brazil/Mortality/all_deaths_compiled.rds')
 
 
