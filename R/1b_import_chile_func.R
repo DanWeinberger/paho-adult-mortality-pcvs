@@ -48,7 +48,7 @@ import_chile_func <- function(){
   test1$country= 'CH'
   
 
-  saveRDS(test1,'./Data/Chile/Mortality/all_deaths_compiled.rds')
+  saveRDS(test1,'./Data/cleaned_country_mortality_files/ch.rds')
   
   
   return('Complete')

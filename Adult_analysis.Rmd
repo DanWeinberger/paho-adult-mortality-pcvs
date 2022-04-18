@@ -26,11 +26,11 @@ Import Data from Brazil, Chile, Argentina, and combine them
 ```{r}
 # import_brazil_func()
 # import_chile_func()
-a1 <- combine_data_countries()
+#a1 <- combine_data_countries()
 ```
 
 ```{r}
-
+a2 <- readRDS('./Data/cleaned_country_mortality_files/individual_level_data_combined.rds')
 ```
 
 ```{r}

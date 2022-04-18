@@ -62,7 +62,7 @@ test2 <- test2[,c('id','dod','dob','icd1','icd2','icd3','icd4','icd5','icd6', 'a
 
 test2$country <- 'BR'
 
-saveRDS(test2,'./Data/Brazil/Mortality/all_deaths_compiled.rds')
+saveRDS(test2,'./Data/cleaned_country_mortality_files/br.rds')
 
 
 return('Complete')
