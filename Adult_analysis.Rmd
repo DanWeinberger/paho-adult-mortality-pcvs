@@ -52,9 +52,8 @@ countries <- c('AR','BR','CH','MX')
 
 
 lapply(countries,function(x){ 
-  
   ts.plot.fun( ds=a2[a2$country==x & !is.na(a2$monthdate),],time.var='monthdate',
-               titlevar=x, yvar='J12_J18_any', multiple_group = T,
+               titlevar=x, yvar='J12_J18_prim', multiple_group = T,
                 ylab1="Number of deaths due to pneumonia (any)" )
                })
 
