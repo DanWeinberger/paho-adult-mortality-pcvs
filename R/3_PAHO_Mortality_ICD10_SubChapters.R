@@ -19,7 +19,7 @@ categories_icd10 <- function(){
     #------------------------------------------------------------------------------#
     
     
-    d <- read.csv('./Data/individual_level_data_combined.csv', as.is = T)
+    d <- readRDS('./Data/cleaned_country_mortality_files/individual_level_data_combined.rds')
     
     
     #------------------------------------------------------------------------------#
@@ -83,8 +83,19 @@ categories_icd10 <- function(){
     #table(noj = d$acm_noj_prim, noj_nodiarr = d$acm_noj_nodiarr_prim)
     length(which(substr(d$dx1, 1, 3) =="A08"))
     
-
-
+    names(d)[is.na(names(d))] <- 'del'
+    ts.outcomes <-    d %>%
+      group_by(country,agec, monthdate) %>%
+      summarize('acm_noj_nodiarr_prim'=sum(acm_noj_nodiarr_prim),
+                'acm_noj_prim'=sum(acm_noj_prim),
+                'J12_J18_any'=sum(J12_J18_any),
+                'J13_prim'=sum(J13_prim),
+                'J00_J99_prim'=sum(J00_J99_prim),
+                'J12_J18_prim'=sum(J12_J18_prim),
+                'J09_J18_prim'=sum(J09_J18_prim))%>%
+      ungroup()
+    saveRDS(ts.outcomes,'./Data/outcome_time_series.rds')  
+    
     #d.ts <- 
    
     
@@ -95,11 +106,13 @@ categories_icd10 <- function(){
     #   group_by(agec, country) %>%
     #   create_subchapters() %>%
     #   ungroup() 
+    options(dplyr.summarise.inform = FALSE)
     d.subs <- create_subchapters(ds=d)
       
     saveRDS(d.subs,'./Data/subchapter_control_time_series.rds')  
       
+    d3 <- merge(ts.outcomes, d.subs, by=c('agec','country','monthdate'), all=T)
     #d2 <- cbind.data.frame(d, d.subs)
     # Save
-    write.csv(d2, "./Data/PAHO_adults_ICD10reformatted_subchapters.csv", row.names = F)
+    saveRDS(d3, "./Data/PAHO_adults_ICD10reformatted_subchapters.rds")
 }

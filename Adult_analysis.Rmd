@@ -16,7 +16,7 @@ source('./R/1a_import_brazil_mortality.R')
 source('./R/1b_import_chile_func.R')
 source('./R/2_combine_data_countries.R')
 source('./R/3_PAHO_Mortality_ICD10_SubChapters.R')
-source('./R/4_create_subchapters.R')
+source('./R/3b_create_subchapters.R')
 
 source('./R/ts.plot.fun.R')
 
@@ -30,66 +30,31 @@ Import Data from Brazil, Chile, Argentina, and combine them
 ```
 
 ```{r}
-a2 <- readRDS('./Data/cleaned_country_mortality_files/individual_level_data_combined.rds')
-```
+a2 <- readRDS("./Data/PAHO_adults_ICD10reformatted_subchapters.rds")
 
-```{r}
-a2$icd1 <- as.character(a2$icd1)
-a2$icd2 <- as.character(a2$icd2)
-a2$icd3 <- as.character(a2$icd3)
-a2$icd4 <- as.character(a2$icd4)
-a2$icd5 <- as.character(a2$icd5)
-a2$icd6 <- as.character(a2$icd6)
+a2 <- a2[!is.na(a2$agec),]
 
-a2$J12_J18_prim <- 0
-a2$J12_J18_prim[grep(pattern='J12|J13|J14|J15|J16|J17|J18|J19', a2$icd1)] <- 1 #CHECK THIS
+a2 <- a2[a2$monthdate>='1999-01-01',]
 
-#note: code this more efficiently...
-a2$J12_J18_any <- 0
-a2$J12_J18_any[grep(pattern='J12|J13|J14|J15|J16|J17|J18|J19', a2$icd1)] <- 1
-a2$J12_J18_any[grep(pattern='J12|J13|J14|J15|J16|J17|J18|J19', a2$icd2)] <- 1
-a2$J12_J18_any[grep(pattern='J12|J13|J14|J15|J16|J17|J18|J19', a2$icd3)] <- 1
-a2$J12_J18_any[grep(pattern='J12|J13|J14|J15|J16|J17|J18|J19', a2$icd4)] <- 1
-a2$J12_J18_any[grep(pattern='J12|J13|J14|J15|J16|J17|J18|J19', a2$icd5)] <- 1
-a2$J12_J18_any[grep(pattern='J12|J13|J14|J15|J16|J17|J18|J19', a2$icd6)] <- 1
-
-
-a2$pneumococcal_pneumo=0
-a2$pneumococcal_pneumo[grep(pattern='J13', a2$icd1)] <- 1
-a2$pneumococcal_pneumo[grep(pattern='J13', a2$icd2)] <- 1
-a2$pneumococcal_pneumo[grep(pattern='J13', a2$icd3)] <- 1
-a2$pneumococcal_pneumo[grep(pattern='J13', a2$icd4)] <- 1
-a2$pneumococcal_pneumo[grep(pattern='J13', a2$icd5)] <- 1
-a2$pneumococcal_pneumo[grep(pattern='J13', a2$icd6)] <- 1
-
-
-a2$acm_noj <- 1
-a2$acm_noj[substr(a2$icd1,1,1)=='J' |
-             substr(a2$icd2,1,1)=='J'|
-             substr(a2$icd3,1,1)=='J'|
-             substr(a2$icd4,1,1)=='J'|
-             substr(a2$icd5,1,1)=='J'|
-             substr(a2$icd6,1,1)=='J' ] <- 0
-
+a2$agec <- as.factor(a2$agec)
+a2$country <- as.factor(a2$country)
 
 ```
 
-
-```{r}
-a2 <- a2 %>%
-  group_by(agec,monthdate) %>%
-  summarise('J12_J18_prim'=sum(J12_J18_prim), 
-            'J12_J18_any'=sum(J12_J18_any),
-            'acm_noj'=sum(acm_noj),
-            'pneumococcal_pneumo'=sum(pneumococcal_pneumo)
-            )
-```
 
 Number of deaths due to pneumonia (any)
 
 ```{r, fig.width=8, fig.height=5}
 
-ts.plot.fun(ds=a2,time.var='monthdate', yvar='J12_J18_any', multiple_group = T, group.var='agec', ylab1="Number of deaths due to pneumonia (any)")
+countries <- c('AR','BR','CH','MX')
+
+
+lapply(countries,function(x){ 
+  
+  ts.plot.fun( ds=a2[a2$country==x & !is.na(a2$monthdate),],time.var='monthdate',
+               titlevar=x, yvar='J12_J18_any', multiple_group = T,
+                ylab1="Number of deaths due to pneumonia (any)" )
+               })
 
 ```
 

@@ -67,9 +67,9 @@ assign_subchapters <- function(icd10_sub_chapters_vector,ds,dx_3_digit, pneumo_c
     icd_letter <- substr(dx.range,1,1)
     icd.num <- as.numeric(substring(dx.range,2))
     
-    if(icd_letter[1]==icd_letter[2]){
+    if(icd_letter[1]==icd_letter[2] & !is.na(icd.num[2]) &!is.nan(icd.num[2]) ){
             all.codes <- paste0(icd_letter[1],sprintf("%02d",icd.num[1]:icd.num[2])) #if whole chapter is within same letter
-    } else{
+    } else if(!is.na(icd.num[2]) &!is.nan(icd.num[2])){
             all.codes1 <- paste0(icd_letter[1],sprintf("%02d",icd.num[1]:99) )
             all.codes2 <- paste0(icd_letter[2],sprintf("%02d",0:icd.num[2]) )
             all.codes <- c(all.codes1,all.codes2)
@@ -79,13 +79,19 @@ assign_subchapters <- function(icd10_sub_chapters_vector,ds,dx_3_digit, pneumo_c
     all.codes <- icd.num[1]
   }
   
-  test_icd <- dx_3_digit %in% all.codes
   
-  test_icd[pneumo_code==1] <- 0
-  test_icd <- test_icd*1
+  ts <- ds %>%
+    mutate(test_icd = 1*(dx_3_digit %in% all.codes & pneumo_code==0)) %>%
+    group_by(agec, country,monthdate) %>%
+    summarize(x=sum(test_icd)) %>%
+    ungroup() %>%
+    mutate(variable=var.name)
   
-  ts <-  aggregate(test_icd, by=list('agec'=ds$agec, 'country'=ds$country,'monthdate'=ds$monthdate), FUN=sum)
-  ts$variable <- var.name
+  # test_icd[pneumo_code==1] <- 0
+  # test_icd <- test_icd*1
+  
+  # ts <-  aggregate(test_icd, by=list('agec'=ds$agec, 'country'=ds$country,'monthdate'=ds$monthdate), FUN=sum)
+  # ts$variable <- var.name
 #  sparse1 <- as(test_icd, "sparseVector")
   return(ts)
 }
