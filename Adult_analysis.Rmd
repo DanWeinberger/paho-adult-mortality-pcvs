@@ -11,10 +11,12 @@ library(dplyr)
 library(stringr)
 library(lubridate)
 library(ggplot2)
+library(Matrix)
 source('./R/1a_import_brazil_mortality.R')
-source('./R/1b_import_brazil_mortality.R')
+source('./R/1b_import_chile_func.R')
 source('./R/2_combine_data_countries.R')
 source('./R/3_PAHO_Mortality_ICD10_SubChapters.R')
+source('./R/4_create_subchapters.R')
 
 source('./R/ts.plot.fun.R')
 
@@ -22,8 +24,8 @@ source('./R/ts.plot.fun.R')
 
 Import Data from Brazil, Chile, Argentina, and combine them
 ```{r}
-#import_brazil_func()
-#import_chile_func()
+# import_brazil_func()
+# import_chile_func()
 a1 <- combine_data_countries()
 ```
 
