@@ -22,11 +22,13 @@ source('./R/ts.plot.fun.R')
 
 ```
 
-Import Data from Brazil, Chile, Argentina, and combine them
+Import Data from Brazil, Chile, Argentina, and combine them, format time series by subchapter and outcome
 ```{r}
 # import_brazil_func()
 # import_chile_func()
 #a1 <- combine_data_countries()
+#a2 <- categories_icd10()
+
 ```
 
 ```{r}
