@@ -99,15 +99,17 @@ ar1.mod <- ar1 %>%
   left_join(pop1, by=c('year','agey')) %>%
   arrange(agey, qtrdate) %>%
   group_by(agey) %>%
-  mutate(log_offset=log(acm),
+  mutate(log_acm=log(acm),
          log_pop=log(pop),
          index = row_number(),
         # intro_index = which(qtrdate==2013.0),
+         vax0 = if_else(qtrdate>=2012.0 & qtrdate<2013.0,1,0),
+
          vax1 = if_else(qtrdate>=2013.0,1,0)
          ) %>%
   filter(agey>=80)
 
-mod1 <- glm.nb( J12_J18 ~ index + agey  +vax1+ log_offset + offset(log_pop), data=ar1.mod)
+mod1 <- glm.nb( J12_J18 ~ index + agey  +vax0+ vax1+  offset(log_pop), data=ar1.mod)
 
 summary(mod1)
 
