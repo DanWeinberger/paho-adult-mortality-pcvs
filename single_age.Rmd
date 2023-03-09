@@ -9,8 +9,20 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
 library(ggplot2)
+library(MASS)
 library(lubridate)
 library(tidyr)
+library(readxl)
+```
+
+Popsize
+```{r}
+pop1 <- read_excel('./Data/WPP2022_POP_F01_1_POPULATION_SINGLE_AGE_BOTH_SEXES_AR.xlsx') %>%
+  reshape2::melt(., id.vars=c('country','Year')) %>%
+  rename(agey=variable, pop=value, year=Year) %>%
+  mutate( agey=as.character(agey),
+          agey = if_else(agey=='100+','100',agey), 
+          agey=as.numeric(as.character(agey)))
 ```
 
 
@@ -44,7 +56,7 @@ ar1 <- a1 %>%
   mutate(prop_j12= J12_J18/acm)
 
 ```
-
+Argentina: intervention: Jan 2021; eval: 2013-2019
 ```{r}
 
 ar1 %>%
@@ -56,8 +68,60 @@ ar1 %>%
   mutate(prop_j12= J12_J18/acm) %>%
 ggplot( aes(x=year, y=log(prop_j12), group=agey, color=agey)) +
   geom_line() +
-  theme_classic()
+  theme_classic()+
+  geom_vline(xintercept=2013.0, lty=2, col='gray')
 ```
+
+
+```{r}
+ar1.mod <- ar1 %>%
+  mutate(log_offset=log(acm))
+
+mod1 <- glm.nb( J12_J18 ~ qtrdate + agey  + offset(log_offset), data=ar1.mod)
+
+summary(mod1)
+
+ar1.mod$pred.mod1 <- predict(mod1, type='response')
+
+ar1.mod %>%
+  mutate(prop_j12_pred= pred.mod1/acm) %>%
+ggplot( aes(x=qtrdate, y=log(prop_j12_pred), group=agey, color=agey)) +
+  geom_line() +
+  theme_classic()+
+  geom_vline(xintercept=2013.0, lty=2, col='gray')
+```
+
+```{r}
+
+ar1.mod <- ar1 %>%
+  mutate(year=floor(qtrdate)) %>%
+  ungroup() %>%
+  left_join(pop1, by=c('year','agey')) %>%
+  arrange(agey, qtrdate) %>%
+  group_by(agey) %>%
+  mutate(log_offset=log(acm),
+         log_pop=log(pop),
+         index = row_number(),
+        # intro_index = which(qtrdate==2013.0),
+         vax1 = if_else(qtrdate>=2013.0,1,0)
+         ) %>%
+  filter(agey>=80)
+
+mod1 <- glm.nb( J12_J18 ~ index + agey  +vax1+ log_offset + offset(log_pop), data=ar1.mod)
+
+summary(mod1)
+
+ar1.mod$pred.mod1 <- predict(mod1, type='response', newdata=ar1.mod)
+
+ar1.mod %>%
+  mutate(prop_j12_pred= pred.mod1/acm) %>%
+ggplot( aes(x=qtrdate, y=log(prop_j12_pred), group=agey, color=agey)) +
+  geom_line() +
+  theme_classic()+
+  geom_vline(xintercept=2013.0, lty=2, col='gray')
+```
+
+
 
 
 
