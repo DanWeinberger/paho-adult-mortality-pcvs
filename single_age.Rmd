@@ -1,0 +1,65 @@
+---
+title: "single_year analysis"
+author: "Dan Weinberger"
+date: '2023-03-09'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(tidyr)
+```
+
+
+```{r, eval=F}
+  a1 <- readRDS('./Data/cleaned_country_mortality_files/individual_level_data_combined.rds') %>%
+    select(agey, dx1, country,  monthdate) %>%
+    mutate(J12_J18 = if_else( grepl('J12', dx1)|grepl('J13', dx1)| grepl('J13', dx1)| 
+                              grepl('J14', dx1)| grepl('J15', dx1)| grepl('J16', dx1)|
+                              grepl('J17', dx1)| grepl('J18', dx1), 1,0 ) ,
+         G30_G32 = if_else( grepl('G30', dx1)|grepl('G31', dx1)| grepl('G32', dx1), 1,0 )) %>%
+  group_by(agey, country, monthdate) %>%
+  summarize( J12_J18=sum(J12_J18),G30_G32=sum(G30_G32), acm=n() )
+
+saveRDS(a1, './Data/cleaned_country_mortality_files/single_year_age.rds')
+
+```
+
+```{r}
+a1 <- readRDS('./Data/cleaned_country_mortality_files/single_year_age.rds')
+
+ar1 <- a1 %>%
+  filter(country=='AR') %>%
+    tidyr::complete(agey, monthdate, fill=list(J12_J18=0,G30_G32=0,acm=0)) %>% #fills NA
+    filter(monthdate>='2005-01-01') %>%
+  mutate(qtr=quarter(monthdate), 
+         year=year(monthdate),
+         qtrdate= year + qtr/4 -1/4) %>%
+  ungroup() %>%
+  group_by(agey, qtrdate) %>%
+  summarize(J12_J18=sum(J12_J18),G30_G32=sum(G30_G32), acm=sum(acm)) %>%
+  mutate(prop_j12= J12_J18/acm)
+
+```
+
+```{r}
+
+ar1 %>%
+  filter(agey>20 & agey<100) %>%
+  ungroup() %>%
+  mutate(year=floor(qtrdate)) %>%
+  group_by(agey, year) %>%
+  summarize(J12_J18=sum(J12_J18),G30_G32=sum(G30_G32), acm=sum(acm)) %>%
+  mutate(prop_j12= J12_J18/acm) %>%
+ggplot( aes(x=year, y=log(prop_j12), group=agey, color=agey)) +
+  geom_line() +
+  theme_classic()
+```
+
+
+
+
+

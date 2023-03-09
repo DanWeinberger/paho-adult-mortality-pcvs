@@ -14,8 +14,11 @@ combine_data_countries <- function(){
   
   d1 <- readRDS('./Data/cleaned_country_mortality_files/mx.rds')
   
+  e1 <- readRDS('./Data/cleaned_country_mortality_files/col.rds')
+
+  
   #combine across countries
-  a2 <- bind_rows(a1[c('dob','dod','agey','icd1','icd2','icd3','icd4','icd5','icd6','country')],b1, c1, d1) #, c1)
+  a2 <- bind_rows(a1[c('dob','dod','agey','icd1','icd2','icd3','icd4','icd5','icd6','country')],b1, c1, d1,e1) #, c1)
   names(a2) <- c('dob','dod','agey','dx1','dx2','dx3','dx4','dx5','dx6','country')
   
   a2$agec <- NA
