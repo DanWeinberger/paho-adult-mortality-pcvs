@@ -123,7 +123,28 @@ ggplot( aes(x=qtrdate, y=log(prop_j12_pred), group=agey, color=agey)) +
   geom_vline(xintercept=2013.0, lty=2, col='gray')
 ```
 
+or 80+ together
 
+```{r}
+ar1.mod <- ar1 %>%
+  mutate(year=floor(qtrdate)) %>%
+  ungroup() %>%
+  filter(agey>=80) %>%
+  group_by(qtrdate) %>%
+  summarize(acm=sum(acm), J12_J18=sum(J12_J18) ) %>%
+  
+  mutate(log_acm=log(acm),
+         index = row_number(),
+        # intro_index = which(qtrdate==2013.0),
+         vax0 = if_else(qtrdate>=2012.0 & qtrdate<2013.0,1,0),
+
+         vax1 = if_else(qtrdate>=2013.0,1,0)
+         ) %>%
+  filter(agey>=80)
+
+mod1 <- glm.nb( J12_J18 ~ index + vax0+ vax1+  offset(log_pop), data=ar1.mod)
+summary(mod1)
+```
 
 
 
