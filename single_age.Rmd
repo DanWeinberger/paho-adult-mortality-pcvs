@@ -49,7 +49,8 @@ ar1 <- a1 %>%
     filter(monthdate>='2005-01-01') %>%
   mutate(qtr=quarter(monthdate), 
          year=year(monthdate),
-         qtrdate= year + qtr/4 -1/4) %>%
+         qtrdate= year + qtr/4 -1/4,
+        agey= if_else(agey>100, 100, agey)) %>%
   ungroup() %>%
   group_by(agey, qtrdate) %>%
   summarize(J12_J18=sum(J12_J18),G30_G32=sum(G30_G32), acm=sum(acm)) %>%
@@ -72,25 +73,61 @@ ggplot( aes(x=year, y=log(prop_j12), group=agey, color=agey)) +
   geom_vline(xintercept=2013.0, lty=2, col='gray')
 ```
 
+offset=acm-
 
 ```{r}
 ar1.mod <- ar1 %>%
-  mutate(log_offset=log(acm))
+  arrange(agey, qtrdate) %>%
+  group_by(agey) %>%
+  mutate(log_acm=log(acm),
+         index= row_number()) %>%
+  ungroup() %>%
+  mutate(
+         intro_index = max(index*(qtrdate==2012.0)),
+         eval_index = max(index*(qtrdate==2013.0)),
+         spl0 = ifelse( index>intro_index, index-intro_index ,0  ),
+         spl1 = ifelse( index>eval_index, index-eval_index ,0  ),
+             vax0 = if_else(qtrdate>=2012.0 & qtrdate<2013.0,1,0),
+         vax1 = if_else(qtrdate>=2013.0,1,0)) %>%
+  filter(agey>80)
 
-mod1 <- glm.nb( J12_J18 ~ qtrdate + agey  + offset(log_offset), data=ar1.mod)
+# mod1 <- glm.nb( J12_J18 ~ index + agey  +spl0 + spl1 + offset(log_acm), data=ar1.mod)
+# summary(mod1)
 
+mod1 <- glm.nb( J12_J18 ~ index + agey  +vax0 + vax1 + offset(log_acm), data=ar1.mod)
 summary(mod1)
 
-ar1.mod$pred.mod1 <- predict(mod1, type='response')
+
+#mod2.gam <- mgcv::gam(J12_J18~index + s(agey) + vax0 + vax1 + offset(log_acm),family=negbin(18),data=ar1.mod)
+plot(mod2.gam)
+
+
+ar1.mod$pred.mod1 <- predict(mod1, newdata=ar1.mod, type='response')
 
 ar1.mod %>%
   mutate(prop_j12_pred= pred.mod1/acm) %>%
 ggplot( aes(x=qtrdate, y=log(prop_j12_pred), group=agey, color=agey)) +
   geom_line() +
   theme_classic()+
-  geom_vline(xintercept=2013.0, lty=2, col='gray')
-```
+  geom_vline(xintercept=c(2012,2013.0), lty=2, col='gray')
 
+
+## rr
+
+ar1.mod$pred.mod1 <- predict(mod1, type='response', newdata=ar1.mod)
+
+ar1.mod.cf <- ar1.mod %>%
+  mutate(spl0=0, spl1=0, vax0=0, vax1=0)
+
+ar1.mod$pred.cf <- predict(mod1, newdata=ar1.mod.cf,type='response')
+
+ar1.mod %>%
+  filter(qtrdate>=2013) %>%
+  ungroup() %>%
+  summarize(pred=sum(pred.mod1), pred.cf=sum(pred.cf)) %>%
+  mutate( RR = pred/pred.cf )
+```
+Instead use POP as a denominator--this does not look nearly as nice, either w
 ```{r}
 
 ar1.mod <- ar1 %>%
@@ -101,12 +138,16 @@ ar1.mod <- ar1 %>%
   group_by(agey) %>%
   mutate(log_acm=log(acm),
          log_pop=log(pop),
-         index = row_number(),
-        # intro_index = which(qtrdate==2013.0),
+         index = row_number()) %>%
+         ungroup() %>%
+        mutate(
+         intro_index = max(index*(qtrdate==2012.0)),
+         eval_index = max(index*(qtrdate==2013.0)),
+         spl0 = ifelse( index>intro_index, index-intro_index ,0  ),
+         spl1 = ifelse( index>eval_index, index-eval_index ,0  ),
          vax0 = if_else(qtrdate>=2012.0 & qtrdate<2013.0,1,0),
-
          vax1 = if_else(qtrdate>=2013.0,1,0)
-         ) %>%
+         )  %>%
   filter(agey>=80)
 
 mod1 <- glm.nb( J12_J18 ~ index + agey  +vax0+ vax1+  offset(log_pop), data=ar1.mod)
@@ -115,16 +156,54 @@ summary(mod1)
 
 ar1.mod$pred.mod1 <- predict(mod1, type='response', newdata=ar1.mod)
 
+
+## rr
+
+ar1.mod$pred.mod1 <- predict(mod1, type='response', newdata=ar1.mod)
+
+ar1.mod.cf <- ar1.mod %>%
+  mutate(spl0=0, spl1=0, vax0=0, vax1=0)
+
+ar1.mod$pred.cf <- predict(mod1, newdata=ar1.mod.cf,type='response')
+
 ar1.mod %>%
-  mutate(prop_j12_pred= pred.mod1/acm) %>%
-ggplot( aes(x=qtrdate, y=log(prop_j12_pred), group=agey, color=agey)) +
-  geom_line() +
-  theme_classic()+
-  geom_vline(xintercept=2013.0, lty=2, col='gray')
+  filter(qtrdate>=2013) %>%
+  ungroup() %>%
+  summarize(pred=sum(pred.mod1), pred.cf=sum(pred.cf)) %>%
+  mutate( RR = pred/pred.cf )
+
+
 ```
 
-or 80+ together
+## or 80+ together
 
+hmm also gives a smaller increase than from InterventionEvaluatR package
+
+```{r}
+ar1.mod_base <- ar1 %>%
+  mutate(year=floor(qtrdate)) %>%
+  ungroup() %>%
+  filter(agey>=80) %>%
+  group_by(qtrdate) %>%
+  summarize(acm=sum(acm), J12_J18=sum(J12_J18) ) %>%
+  
+  mutate(log_acm=log(acm),
+         index = row_number(),
+        # intro_index = which(qtrdate==2013.0),
+         vax0 = if_else(qtrdate>=2012.0 & qtrdate<2013.0,1,0),
+
+         vax1 = if_else(qtrdate>=2013.0,1,0)
+         )
+
+mod0 <- glm.nb( J12_J18 ~ index + vax0+ vax1+  offset(log_acm), data=ar1.mod_base)
+summary(mod0)
+
+#AIC: 899: null 218.566 on 59 DF
+
+```
+
+
+use log_offset as a covariate instead of as an offset 
 ```{r}
 ar1.mod <- ar1 %>%
   mutate(year=floor(qtrdate)) %>%
@@ -139,14 +218,91 @@ ar1.mod <- ar1 %>%
          vax0 = if_else(qtrdate>=2012.0 & qtrdate<2013.0,1,0),
 
          vax1 = if_else(qtrdate>=2013.0,1,0)
-         ) %>%
-  filter(agey>=80)
+  )
 
-mod1 <- glm.nb( J12_J18 ~ index + vax0+ vax1+  offset(log_pop), data=ar1.mod)
+ggplot(ar1.mod, aes(x=qtrdate, y=J12_J18))+
+  geom_line()+
+  theme_classic() +
+  geom_vline(xintercept=c(2012, 2013), lty=2, col='gray')
+
+
+
+mod1 <- glm.nb( J12_J18 ~ index + vax0+ vax1+   log_acm, data=ar1.mod)
 summary(mod1)
 ```
 
+use more complicated structure for ITS...this is the problem. IRR jumps from 1.1 to 1.35 (and is worse if let offset be estimated instead of fixed at 1). Note AIC does NOT improve with the more complicated structure
+```{r}
+ar1.mod <- ar1 %>%
+  mutate(year=floor(qtrdate)) %>%
+  ungroup() %>%
+  filter(agey>=80) %>%
+  group_by(qtrdate) %>%
+  summarize(acm=sum(acm), J12_J18=sum(J12_J18) ) %>%
+  
+  mutate(log_acm=log(acm),
+         index = row_number(),
+        # intro_index = which(qtrdate==2013.0),
+         vax0 = if_else(qtrdate>=2012.0 & qtrdate<2013.0,1,0),
+
+         vax1 = if_else(qtrdate>=2013.0,1,0)
+         )
+
+mod1 <- glm.nb( J12_J18 ~ index + vax0+ vax1+ index*vax0 + index*vax1 + offset(log_acm), data=ar1.mod)
+summary(mod1)
 
 
+ar1.mod$pred.mod1 <- predict(mod1, type='response')
 
+ar1.mod.cf <- ar1.mod %>%
+  mutate(vax0=0, vax1=0)
+
+ar1.mod$pred.cf <- predict(mod1, newdata=ar1.mod.cf,type='response')
+
+ar1.mod %>%
+  filter(qtrdate>=2013) %>%
+  summarize(pred=sum(pred.mod1), pred.cf=sum(pred.cf)) %>%
+  mutate( RR = pred/pred.cf )
+
+
+```
+
+How about if we use a linear spline for the post-vax trends instead?
+Still a mess. Key problem is that J12_J18/ACM sharply increases after vax intro
+
+```{r}
+ar1.mod <- ar1 %>%
+  mutate(year=floor(qtrdate)) %>%
+  ungroup() %>%
+  filter(agey>=80) %>%
+  group_by(qtrdate) %>%
+  summarize(acm=sum(acm), J12_J18=sum(J12_J18) ,G30_G32=sum(G30_G32)) %>%
+  mutate(log_acm=log(acm),
+         log_g30=log(G30_G32),
+         index = row_number(),
+         intro_index = which(qtrdate==2012.0),
+         eval_index = which(qtrdate==2013.0),
+         vax0 = ifelse( index>intro_index, index-intro_index ,0  ),
+         vax1 = ifelse( index>eval_index, index-eval_index ,0  )
+
+         )
+
+mod1 <- glm.nb( J12_J18 ~ index + vax0+ vax1+  offset(log_acm), data=ar1.mod)
+summary(mod1)
+
+
+ar1.mod$pred.mod1 <- predict(mod1, type='response')
+
+ar1.mod.cf <- ar1.mod %>%
+  mutate(vax0=0, vax1=0)
+
+ar1.mod$pred.cf <- predict(mod1, newdata=ar1.mod.cf,type='response')
+
+ar1.mod %>%
+  filter(qtrdate>=2013) %>%
+  summarize(pred=sum(pred.mod1), pred.cf=sum(pred.cf)) %>%
+  mutate( RR = pred/pred.cf )
+
+#AIC: 899: null 218.566 on 59 DF
+```
 
