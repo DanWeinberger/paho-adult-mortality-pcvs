@@ -59,27 +59,58 @@ ar1 <- a1 %>%
 ```
 Argentina: intervention: Jan 2021; eval: 2013-2019
 ```{r}
-
 ar1 %>%
-  filter(agey>20 & agey<100) %>%
+  filter(agey>20 & agey<100 ) %>%
   ungroup() %>%
   mutate(year=floor(qtrdate)) %>%
   group_by(agey, year) %>%
   summarize(J12_J18=sum(J12_J18),G30_G32=sum(G30_G32), acm=sum(acm)) %>%
-  mutate(prop_j12= J12_J18/acm) %>%
+  mutate(prop_j12= J12_J18/acm,
+         j12_vs_G30 =J12_J18/G30_G32) %>%
 ggplot( aes(x=year, y=log(prop_j12), group=agey, color=agey)) +
   geom_line() +
   theme_classic()+
-  geom_vline(xintercept=2013.0, lty=2, col='gray')
+  geom_vline(xintercept=c(2012,2013.0), lty=2, col='gray')
 ```
 
-offset=acm-
+
+```{r}
+
+ar1 %>%
+  filter(agey>20 & agey<100 & agey>80) %>%
+  ungroup() %>%
+  mutate(year=floor(qtrdate)) %>%
+  group_by(agey, year) %>%
+  summarize(J12_J18=sum(J12_J18),G30_G32=sum(G30_G32), acm=sum(acm)) %>%
+  mutate(prop_j12= J12_J18/acm,
+         j12_vs_G30 =J12_J18/G30_G32) %>%
+ggplot( aes(x=year, y=log(j12_vs_G30), group=agey, color=agey)) +
+  geom_line() +
+  theme_classic()+
+  geom_vline(xintercept=c(2012,2013.0), lty=2, col='gray')
+
+ar1 %>%
+  filter(agey>20 & agey<100 & agey>80) %>%
+  ungroup() %>%
+  mutate(year=floor(qtrdate)) %>%
+  group_by(agey, year) %>%
+  summarize(J12_J18=sum(J12_J18),G30_G32=sum(G30_G32), acm=sum(acm)) %>%
+  mutate(prop_j12= J12_J18/acm,
+         j12_vs_G30 =J12_J18/G30_G32) %>%
+ggplot( aes(x=year, y=log(prop_j12), group=agey, color=agey)) +
+  geom_line() +
+  theme_classic()+
+  geom_vline(xintercept=c(2012,2013.0), lty=2, col='gray')
+```
+
+offset=acm; change in intercept ITS
 
 ```{r}
 ar1.mod <- ar1 %>%
   arrange(agey, qtrdate) %>%
   group_by(agey) %>%
   mutate(log_acm=log(acm),
+         log_g30=log(G30_G32+0.5),
          index= row_number()) %>%
   ungroup() %>%
   mutate(
@@ -95,6 +126,63 @@ ar1.mod <- ar1 %>%
 # summary(mod1)
 
 mod1 <- glm.nb( J12_J18 ~ index + agey  +vax0 + vax1 + offset(log_acm), data=ar1.mod)
+summary(mod1)
+
+
+#mod2.gam <- mgcv::gam(J12_J18~index + s(agey) + vax0 + vax1 + offset(log_acm),family=negbin(18),data=ar1.mod)
+plot(mod2.gam)
+
+
+ar1.mod$pred.mod1 <- predict(mod1, newdata=ar1.mod, type='response')
+
+ar1.mod %>%
+  mutate(prop_j12_pred= pred.mod1/acm) %>%
+ggplot( aes(x=qtrdate, y=log(prop_j12_pred), group=agey, color=agey)) +
+  geom_line() +
+  theme_classic()+
+  geom_vline(xintercept=c(2012,2013.0), lty=2, col='gray')
+
+
+## rr
+
+ar1.mod$pred.mod1 <- predict(mod1, type='response', newdata=ar1.mod)
+
+ar1.mod.cf <- ar1.mod %>%
+  mutate(spl0=0, spl1=0, vax0=0, vax1=0)
+
+ar1.mod$pred.cf <- predict(mod1, newdata=ar1.mod.cf,type='response')
+
+ar1.mod %>%
+  filter(qtrdate>=2013) %>%
+  ungroup() %>%
+  summarize(pred=sum(pred.mod1), pred.cf=sum(pred.cf)) %>%
+  mutate( RR = pred/pred.cf )
+```
+
+
+offset=acm; change in SLOPE ITS
+
+```{r}
+ar1.mod <- ar1 %>%
+  arrange(agey, qtrdate) %>%
+  group_by(agey) %>%
+  mutate(log_acm=log(acm),
+                  log_g30=log(G30_G32+0.5),
+         index= row_number()) %>%
+  ungroup() %>%
+  mutate(
+         intro_index = max(index*(qtrdate==2012.0)),
+         eval_index = max(index*(qtrdate==2013.0)),
+         spl0 = ifelse( index>intro_index, index-intro_index ,0  ),
+         spl1 = ifelse( index>eval_index, index-eval_index ,0  ),
+             vax0 = if_else(qtrdate>=2012.0 & qtrdate<2013.0,1,0),
+         vax1 = if_else(qtrdate>=2013.0,1,0)) %>%
+  filter(agey>80)
+
+# mod1 <- glm.nb( J12_J18 ~ index + agey  +spl0 + spl1 + offset(log_acm), data=ar1.mod)
+# summary(mod1)
+
+mod1 <- glm.nb( J12_J18 ~ index + agey  +spl0 + spl1 + offset(log_acm), data=ar1.mod)
 summary(mod1)
 
 
