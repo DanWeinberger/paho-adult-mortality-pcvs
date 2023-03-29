@@ -28,13 +28,16 @@ pop1 <- read_excel('./Data/WPP2022_POP_F01_1_POPULATION_SINGLE_AGE_BOTH_SEXES_AR
 
 ```{r, eval=F}
   a1 <- readRDS('./Data/cleaned_country_mortality_files/individual_level_data_combined.rds') %>%
-    select(agey, dx1, country,  monthdate) %>%
+    dplyr::select(agey, dx1, country,  monthdate) %>%
     mutate(J12_J18 = if_else( grepl('J12', dx1)|grepl('J13', dx1)| grepl('J13', dx1)| 
                               grepl('J14', dx1)| grepl('J15', dx1)| grepl('J16', dx1)|
                               grepl('J17', dx1)| grepl('J18', dx1), 1,0 ) ,
-         G30_G32 = if_else( grepl('G30', dx1)|grepl('G31', dx1)| grepl('G32', dx1), 1,0 )) %>%
+         G30_G32 = if_else( grepl('G30', dx1)|grepl('G31', dx1)| grepl('G32', dx1), 1,0 ),
+         N30_N39 = if_else( grepl('N30', dx1)|grepl('N31', dx1)| grepl('N32', dx1)| grepl('N33', dx1)
+                            | grepl('N34', dx1)| grepl('N35', dx1)| grepl('N36', dx1)
+                            | grepl('N37', dx1)| grepl('N38', dx1)| grepl('N39', dx1), 1,0 )) %>%
   group_by(agey, country, monthdate) %>%
-  summarize( J12_J18=sum(J12_J18),G30_G32=sum(G30_G32), acm=n() )
+  summarize( J12_J18=sum(J12_J18),G30_G32=sum(G30_G32),N30_N39=sum(N30_N39), acm=n() )
 
 saveRDS(a1, './Data/cleaned_country_mortality_files/single_year_age.rds')
 
@@ -53,7 +56,7 @@ ar1 <- a1 %>%
         agey= if_else(agey>100, 100, agey)) %>%
   ungroup() %>%
   group_by(agey, qtrdate) %>%
-  summarize(J12_J18=sum(J12_J18),G30_G32=sum(G30_G32), acm=sum(acm)) %>%
+  summarize(J12_J18=sum(J12_J18),G30_G32=sum(G30_G32), N30_N39=sum(N30_N39),acm=sum(acm)) %>%
   mutate(prop_j12= J12_J18/acm)
 
 ```
@@ -64,9 +67,10 @@ ar1 %>%
   ungroup() %>%
   mutate(year=floor(qtrdate)) %>%
   group_by(agey, year) %>%
-  summarize(J12_J18=sum(J12_J18),G30_G32=sum(G30_G32), acm=sum(acm)) %>%
+  summarize(J12_J18=sum(J12_J18),G30_G32=sum(G30_G32), N30_N39=sum(N30_N39),acm=sum(acm)) %>%
   mutate(prop_j12= J12_J18/acm,
-         j12_vs_G30 =J12_J18/G30_G32) %>%
+         j12_vs_G30 =J12_J18/G30_G32,
+         j12_vs_n30= J12_J18/N30_N39) %>%
 ggplot( aes(x=year, y=log(prop_j12), group=agey, color=agey)) +
   geom_line() +
   theme_classic()+
@@ -94,6 +98,21 @@ ar1 %>%
   ungroup() %>%
   mutate(year=floor(qtrdate)) %>%
   group_by(agey, year) %>%
+  summarize(J12_J18=sum(J12_J18),N30_N39=sum(N30_N39), acm=sum(acm)) %>%
+  mutate(prop_j12= J12_J18/acm,
+         j12_vs_N30 =J12_J18/N30_N39) %>%
+ggplot( aes(x=year, y=log(j12_vs_N30), group=agey, color=agey)) +
+  geom_line() +
+  theme_classic()+
+  geom_vline(xintercept=c(2012,2013.0), lty=2, col='gray')
+
+
+
+ar1 %>%
+  filter(agey>20 & agey<100 & agey>80) %>%
+  ungroup() %>%
+  mutate(year=floor(qtrdate)) %>%
+  group_by(agey, year) %>%
   summarize(J12_J18=sum(J12_J18),G30_G32=sum(G30_G32), acm=sum(acm)) %>%
   mutate(prop_j12= J12_J18/acm,
          j12_vs_G30 =J12_J18/G30_G32) %>%
@@ -111,6 +130,7 @@ ar1.mod <- ar1 %>%
   group_by(agey) %>%
   mutate(log_acm=log(acm),
          log_g30=log(G30_G32+0.5),
+         log_n30= log(N30_N39+0.5),
          index= row_number()) %>%
   ungroup() %>%
   mutate(
@@ -187,7 +207,61 @@ summary(mod1)
 
 
 #mod2.gam <- mgcv::gam(J12_J18~index + s(agey) + vax0 + vax1 + offset(log_acm),family=negbin(18),data=ar1.mod)
-plot(mod2.gam)
+#plot(mod2.gam)
+
+
+ar1.mod$pred.mod1 <- predict(mod1, newdata=ar1.mod, type='response')
+
+ar1.mod %>%
+  mutate(prop_j12_pred= pred.mod1/acm) %>%
+ggplot( aes(x=qtrdate, y=log(prop_j12_pred), group=agey, color=agey)) +
+  geom_line() +
+  theme_classic()+
+  geom_vline(xintercept=c(2012,2013.0), lty=2, col='gray')
+
+
+## rr
+
+ar1.mod$pred.mod1 <- predict(mod1, type='response', newdata=ar1.mod)
+
+ar1.mod.cf <- ar1.mod %>%
+  mutate(spl0=0, spl1=0, vax0=0, vax1=0)
+
+ar1.mod$pred.cf <- predict(mod1, newdata=ar1.mod.cf,type='response')
+
+ar1.mod %>%
+  filter(qtrdate>=2013) %>%
+  ungroup() %>%
+  summarize(pred=sum(pred.mod1), pred.cf=sum(pred.cf)) %>%
+  mutate( RR = pred/pred.cf )
+```
+Try N30 as denom
+```{r}
+ar1.mod <- ar1 %>%
+  arrange(agey, qtrdate) %>%
+  group_by(agey) %>%
+  mutate(log_acm=log(acm),
+                  log_n30=log(N30_N39+0.5),
+         index= row_number()) %>%
+  ungroup() %>%
+  mutate(
+         intro_index = max(index*(qtrdate==2012.0)),
+         eval_index = max(index*(qtrdate==2013.0)),
+         spl0 = ifelse( index>intro_index, index-intro_index ,0  ),
+         spl1 = ifelse( index>eval_index, index-eval_index ,0  ),
+             vax0 = if_else(qtrdate>=2012.0 & qtrdate<2013.0,1,0),
+         vax1 = if_else(qtrdate>=2013.0,1,0)) %>%
+  filter(agey>80)
+
+# mod1 <- glm.nb( J12_J18 ~ index + agey  +spl0 + spl1 + offset(log_acm), data=ar1.mod)
+# summary(mod1)
+
+mod1 <- glm.nb( J12_J18 ~ index + agey  +spl0 + spl1 + offset(log_n30), data=ar1.mod)
+summary(mod1)
+
+
+#mod2.gam <- mgcv::gam(J12_J18~index + s(agey) + vax0 + vax1 + offset(log_acm),family=negbin(18),data=ar1.mod)
+#plot(mod2.gam)
 
 
 ar1.mod$pred.mod1 <- predict(mod1, newdata=ar1.mod, type='response')
@@ -265,7 +339,7 @@ ar1.mod %>%
 
 ## or 80+ together
 
-hmm also gives a smaller increase than from InterventionEvaluatR package
+hmm also gives a smaller increase than from InterventionEvaluatR package (issue is use of the vax0,vax vs spline)
 
 ```{r}
 ar1.mod_base <- ar1 %>%
@@ -273,7 +347,7 @@ ar1.mod_base <- ar1 %>%
   ungroup() %>%
   filter(agey>=80) %>%
   group_by(qtrdate) %>%
-  summarize(acm=sum(acm), J12_J18=sum(J12_J18) ) %>%
+  summarize(acm=sum(acm), J12_J18=sum(J12_J18) , ) %>%
   
   mutate(log_acm=log(acm),
          index = row_number(),
@@ -317,6 +391,60 @@ ggplot(ar1.mod, aes(x=qtrdate, y=J12_J18))+
 
 mod1 <- glm.nb( J12_J18 ~ index + vax0+ vax1+   log_acm, data=ar1.mod)
 summary(mod1)
+```
+
+
+use N30_N39 as an offset
+```{r}
+ar1.mod <- ar1 %>%
+  mutate(year=floor(qtrdate)) %>%
+  ungroup() %>%
+  filter(agey>=80) %>%
+  group_by(qtrdate) %>%
+  summarize(acm=sum(acm), J12_J18=sum(J12_J18), N30_N39=sum(N30_N39+0.5) ) %>%
+  
+  mutate(log_acm=log(acm),
+         index = row_number(),
+        # intro_index = which(qtrdate==2013.0),
+         vax0 = if_else(qtrdate>=2012.0 & qtrdate<2013.0,1,0),
+
+         vax1 = if_else(qtrdate>=2013.0,1,0),
+        
+        spl0 = ifelse( qtrdate>2012.0, qtrdate-2012.0 ,0  ),
+         spl1 = ifelse( qtrdate>2013.0, qtrdate-2013.0 ,0  ),
+        
+        log_n30=log(N30_N39)
+  )
+
+ggplot(ar1.mod, aes(x=qtrdate, y=J12_J18))+
+  geom_line()+
+  theme_classic() +
+  geom_vline(xintercept=c(2012, 2013), lty=2, col='gray')
+
+
+
+mod1 <- glm.nb( J12_J18 ~ index + vax0+ vax1 +offset(log_n30),  data=ar1.mod)
+summary(mod1)
+
+
+
+ar1.mod$pred.mod1 <- predict(mod1, type='response', newdata=ar1.mod)
+
+
+## rr
+
+ar1.mod$pred.mod1 <- predict(mod1, type='response', newdata=ar1.mod)
+
+ar1.mod.cf <- ar1.mod %>%
+  mutate(spl0=0, spl1=0, vax0=0, vax1=0)
+
+ar1.mod$pred.cf <- predict(mod1, newdata=ar1.mod.cf,type='response')
+
+ar1.mod %>%
+  filter(qtrdate>=2013) %>%
+  ungroup() %>%
+  summarize(pred=sum(pred.mod1), pred.cf=sum(pred.cf)) %>%
+  mutate( RR = pred/pred.cf )
 ```
 
 use more complicated structure for ITS...this is the problem. IRR jumps from 1.1 to 1.35 (and is worse if let offset be estimated instead of fixed at 1). Note AIC does NOT improve with the more complicated structure
@@ -392,5 +520,50 @@ ar1.mod %>%
   mutate( RR = pred/pred.cf )
 
 #AIC: 899: null 218.566 on 59 DF
+```
+
+```{r}
+a2 <- readRDS("./Data/PAHO_adults_ICD10reformatted_subchapters.rds") %>%
+  filter(country=='AR' & !is.na(agec) & monthdate>='2005-01-01') %>%
+  mutate(year=year(monthdate)) %>%
+  dplyr::select(-country, -monthdate) %>%
+    group_by(agec,year) %>%
+  summarize_all(list(sum))
+
+
+ggplot(a2, aes(x=year, y=J12_J18_prim, group=agec, color=agec)) +
+  geom_line()+
+  theme_classic()
+
+ggplot(a2, aes(x=year, y=N30_N39, group=agec, color=agec)) +
+  geom_line()+
+  theme_classic()
+
+
+a2 %>% filter(agec=='7') %>% 
+ggplot(., aes(x=year, y=J12_J18_prim/N30_N39, group=agec, color=agec)) +
+  geom_line()+
+  theme_classic()
+
+
+a2.old <- a2 %>%filter(agec=='7')  %>%
+     mutate(spl0 = ifelse( year>2012.0, year-2012.0 ,0  ),
+         spl1 = ifelse( year>2013.0, year-2013.0 ,0  ),
+             vax0 = if_else(year>=2012.0 & year<2013.0,1,0),
+         vax1 = if_else(year>=2013.0,1,0)) 
+
+
+
+Xmat <- a2.old %>% 
+  dplyr::select(-spl0, -spl1, -vax0, -vax1,-agec, -year)
+  
+cor1 <-cor(Xmat )
+  cor1.j12 <- cor1[,c('J12_J18_prim')]
+  
+  sort(cor1.j12, decreasing=T)
+  
+  
+mod1 <- glm.nb( J12_J18_prim ~ year+ spl0+spl1 +log(N30_N39),     data=a2.old)  
+  summary(mod1)
 ```
 
