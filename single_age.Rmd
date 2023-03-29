@@ -423,7 +423,7 @@ ggplot(ar1.mod, aes(x=qtrdate, y=J12_J18))+
 
 
 
-mod1 <- glm.nb( J12_J18 ~ index + vax0+ vax1 +offset(log_n30),  data=ar1.mod)
+mod1 <- glm.nb( J12_J18 ~ index + spl0+ spl1 +offset(log_n30),  data=ar1.mod)
 summary(mod1)
 
 
@@ -554,16 +554,107 @@ a2.old <- a2 %>%filter(agec=='7')  %>%
 
 
 
-Xmat <- a2.old %>% 
-  dplyr::select(-spl0, -spl1, -vax0, -vax1,-agec, -year)
+
+```
+
+
+PCA
+```{r}
+
+a2 <- readRDS("./Data/PAHO_adults_ICD10reformatted_subchapters.rds") %>%
+  filter(country=='AR' & agec==7 & !is.na(agec) & monthdate>='2005-01-01') %>%
+  arrange(monthdate) %>%
+  mutate( monthn = lubridate::month(monthdate),
+          year=year(monthdate),
+          monthdate2= year + monthn/12 -1/12,
+          spl0 = ifelse( monthdate2>2012.0, monthdate2-2012.0 ,0  ),
+         spl1 = ifelse( monthdate2>2013.0, monthdate2-2013.0 ,0  ),
+             vax0 = if_else(monthdate2>=2012.0 & monthdate2<2013.0,1,0),
+         vax1 = if_else(monthdate2>=2013.0,1,0),
+        index=row_number()
+          ) %>%
+    dplyr::select(-country, -monthn,-year , -monthdate)
+
+
+
+
+Xmat <- a2 %>% 
+  dplyr::select(-spl0, -spl1, -vax0, -vax1,-agec,-monthdate2)
+
   
 cor1 <-cor(Xmat )
-  cor1.j12 <- cor1[,c('J12_J18_prim')]
+  
+cor1.j12 <- cor1[,c('J12_J18_prim')]
   
   sort(cor1.j12, decreasing=T)
   
   
-mod1 <- glm.nb( J12_J18_prim ~ year+ spl0+spl1 +log(N30_N39),     data=a2.old)  
+mod1 <- glm.nb( J12_J18_prim ~ index+ spl0+spl1 +log(N30_N39+0.5),     data=a2)  
   summary(mod1)
+
+  a2$pred.mod1 <- predict(mod1, type='response')
+
+ar1.mod.cf <- a2 %>%
+  mutate(vax0=0, vax1=0, spl0=0, spl1=0)
+
+a2$pred.cf <- predict(mod1, newdata=ar1.mod.cf,type='response')
+
+a2 %>%
+  filter(monthdate2>=2013) %>%
+  summarize(pred=sum(pred.mod1), pred.cf=sum(pred.cf)) %>%
+  mutate( RR = pred/pred.cf )  
+  
+covars <-   Xmat %>%
+  ungroup() %>%
+    dplyr::select(-J12_J18_any, -index,-J13_prim, -J12_J18_prim, -J09_J18_prim , -J00_J99_prim,-J20_J22)
+
+library(zoo)
+covars.smooth <- apply(covars,2, function(x)  rollapply(x, align='right',FUN=mean, width=12,  partial=T) )
+
+covars.log <- apply(covars.smooth,2, function(x) log(x+0.5))
+
+covars.log <- covars.log[, colSums(covars.log)>0]
+  
+  #Should be already scaled, but doesn't hurt...
+  x.scale1<-apply(covars.log,2, function(z) scale(z)) 
+  
+  y.aware.scale<- apply(x.scale1, 2, function(x1){
+    log.y.pre.scale<- scale(log(Xmat$J12_J18_prim+0.5))
+    log.y.pre.scale<-log.y.pre.scale[!is.na(log.y.pre.scale)]
+    reg<-lm(log.y.pre.scale~x1)
+    slope<- reg$coefficients[2]
+    x.scale<-x1*slope - mean(x1*slope)
+    return(x.scale)
+  })
+  
+  pca1<- prcomp(y.aware.scale, center = FALSE,scale. = FALSE)
+  #n.pcs.keep<-sum(pca1$sdev>1)
+
+    pcs<-pca1$x
+  pcs<-apply(pcs,2, scale) #SCALE THE PCS prior to regression!
+
+  matplot(pcs[,1:5], type='l')
+
+  
+  df.mod <- cbind.data.frame('J12_J18_prim'=a2$J12_J18_prim, 'index'=a2$index, 'spl0'=a2$spl0, 'spl1'=a2$spl1,
+                             'pc1'=pcs[,1],'pc2'=pcs[,2],'pc3'=pcs[,3],'pc4'=pcs[,4], 'monthdate2'=a2$monthdate2)
+  
+  mod1 <- glm.nb( J12_J18_prim ~ index+ spl0+spl1 + offset(pc1) ,     data=df.mod)  
+  
+  
+  summary(mod1)
+
+  df.mod$pred.mod1 <- predict(mod1, type='response')
+
+ar1.mod.cf <- df.mod %>%
+  mutate(vax0=0, vax1=0, spl0=0, spl1=0)
+
+df.mod$pred.cf <- predict(mod1, newdata=ar1.mod.cf,type='response')
+
+df.mod %>%
+  filter(monthdate2>=2013) %>%
+  summarize(pred=sum(pred.mod1), pred.cf=sum(pred.cf)) %>%
+  mutate( RR = pred/pred.cf )  
+
 ```
 
