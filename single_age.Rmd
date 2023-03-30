@@ -609,7 +609,7 @@ covars <-   Xmat %>%
     dplyr::select(-J12_J18_any, -index,-J13_prim, -J12_J18_prim, -J09_J18_prim , -J00_J99_prim,-J20_J22)
 
 library(zoo)
-covars.smooth <- apply(covars,2, function(x)  rollapply(x, align='right',FUN=mean, width=12,  partial=T) )
+covars.smooth <- apply(covars,2, function(x)  rollapply(x, align='center',FUN=mean, width=12,  partial=T) )
 
 covars.log <- apply(covars.smooth,2, function(x) log(x+0.5))
 
@@ -637,9 +637,9 @@ covars.log <- covars.log[, colSums(covars.log)>0]
 
   
   df.mod <- cbind.data.frame('J12_J18_prim'=a2$J12_J18_prim, 'index'=a2$index, 'spl0'=a2$spl0, 'spl1'=a2$spl1,
-                             'pc1'=pcs[,1],'pc2'=pcs[,2],'pc3'=pcs[,3],'pc4'=pcs[,4], 'monthdate2'=a2$monthdate2)
+                             'pc1'=pcs[,1],'pc2'=pcs[,2],'pc3'=pcs[,3],'pc4'=pcs[,4], log_N30_N39_sm=x.scale1[,'N30_N39'], 'monthdate2'=a2$monthdate2)
   
-  mod1 <- glm.nb( J12_J18_prim ~ index+ spl0+spl1 + offset(pc1) ,     data=df.mod)  
+  mod1 <- glm.nb( J12_J18_prim ~ index+ spl0+spl1 + offset(log_N30_N39_sm) ,     data=df.mod)  
   
   
   summary(mod1)
