@@ -1,0 +1,388 @@
+---
+title: "SC+ITS and DLM models"
+author: "Dan Weinberger, Ottavia Prunas, Kayoko Shioda"
+date: '2023-04-12'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+##############
+#Packages
+##############
+library(rjags)
+library(dplyr)
+library(ggplot2)
+library(MASS)
+library(lubridate)
+library(tidyr)
+library(readxl)
+library(zoo)
+library(HDInterval)
+```
+
+```{r}
+source("./R/SC+ITS_jags.R")
+source("./R/aggSC_DLM.R")
+```
+
+
+
+## Define main study characteristics
+```{r}
+outcome_name="J12_J18_prim"
+country="AR"
+intervention_date=as.Date("2012-01-01")
+post_period=c(as.Date("2012-02-01"), as.Date('2012-12-01'))
+eval_period=c(as.Date("2013-01-01"), as.Date('2019-12-01'))
+pre_period_start = as.Date("2005-01-01")
+post_period_start = as.Date("2012-01-01")
+denom='acm_noj_nodiarr_prim' 
+```
+
+Load and manipulate data: Argentina age 80+
+```{r}
+a2 <- readRDS("./Data/PAHO_adults_ICD10reformatted_subchapters.rds") %>%
+  filter(country=='AR' & agec==7 & !is.na(agec) & monthdate>='2005-01-01') %>%
+  arrange(monthdate) %>%
+  mutate( monthn = lubridate::month(monthdate),
+          year=year(monthdate),
+          intercept = rep(1, length.out=n()),
+          monthdate2= year + monthn/12 -1/12,
+          vax0 = if_else(monthdate2>=2012.0 & monthdate2<2013.0,1,0),
+          vax1 = if_else(monthdate2>=2013.0,1,0),
+          index = row_number()/n(),
+          sin12 = sin(2*pi* index/12),
+          cos12 = cos(2*pi* index/12),
+          sin6 = sin(2*pi* index/6),
+          cos6 = cos(2*pi* index/6)
+          )%>%
+    dplyr::select(-country, -monthn,-year)
+
+Xmat <- a2 %>% 
+  dplyr::select(-vax0, -vax1,-agec,-monthdate2,-monthdate)
+covars <-   Xmat %>%
+  ungroup() %>%
+    dplyr::select(-J12_J18_any, -index,-intercept,-acm_noj_nodiarr_prim,-sin12,-cos12,-sin6,-cos6,-J13_prim, -J12_J18_prim, -J09_J18_prim , -J00_J99_prim,-J20_J22)
+
+covars.smooth <- apply(covars,2, function(x)  rollapply(x, align='center',FUN=mean, width=12,  partial=T) )
+
+covars.log <- apply(covars.smooth,2, function(x) log(x+0.5))
+#covars.log.NS <- apply(covars,2, function(x) log(x+0.5))
+covars.log <- covars.log[, colSums(covars.log)>0]
+#covars.log.NS <- covars.log[, colSums(covars.log)>0]
+
+#Should be already scaled, but doesn't hurt...
+x.scale1<-apply(covars.log,2, function(z) scale(z)) 
+#x.scale1.NS<-apply(covars.log.NS,2, function(z) scale(z)) 
+
+```
+
+
+## Define model input
+```{r}
+a2.pre <- a2 %>%
+  filter(monthdate<="2012-02-01")
+n_pre <- nrow(a2.pre)
+n <- nrow(a2)
+y <- a2$J12_J18_prim
+## Offset is smoothed and on log scale
+offset <- covars.log[,"acm_noj_prim"]#log(a2$acm_noj_prim+0.5)#x.scale1[,"acm_noj_prim"]
+x.preds <- x.scale1[,2:ncol(x.scale1)]
+# Create monthly dummy variables to control for seasonality
+months <- month(a2$monthdate)
+month.mat <- dummies::dummy(months)
+month.mat <- month.mat[,-12]
+month.mat <- cbind(rep(1, nrow(month.mat)), month.mat) # Add an intercept
+colnames(month.mat) <- c("Intercept","s1","s2","s3","s4","s5","s6","s7","s8","s9","s10","s11")
+month.mat.pre <- month.mat[a2$monthdate <= "2012-02-01", ]
+z<-month.mat[,2:12]
+```
+
+
+1. Run SC+ITS model with smoothed predictors
+```{r}
+posterior_samples<-SC_ITS_model(burnin=5000,
+                                samples=500000,
+                                thin=50,
+                                chains=1,
+                                n_full=n,
+                                n_modeling=n_pre,
+                                y_modeling=y,
+                                offset=offset,
+                                x=x.preds,
+                                z=z,
+                                regularize=1 ## specify to use RIDGE regression
+                                )
+
+saveRDS(posterior_samples,"./Results/posterior_samples_SCITS_Smoothpred.RDS")
+```
+
+##Post processing
+```{r}
+rr<-posterior_samples[[1]][,substr(colnames(posterior_samples[[1]]), 1, 2) == "rr"]
+lambda<-posterior_samples[[1]][,substr(colnames(posterior_samples[[1]]), 1, 7) == "lambda["]
+lambda_counter<-posterior_samples[[1]][,substr(colnames(posterior_samples[[1]]), 1, 7) == "lambda_"]
+alpha0<-posterior_samples[[1]][,substr(colnames(posterior_samples[[1]]), 1, 6) == "alpha0"]
+alpha1<-posterior_samples[[1]][,substr(colnames(posterior_samples[[1]]), 1, 6) == "alpha1"]
+
+##Plot outputs
+
+plot(y, type="l")
+lines(colMeans(lambda), col="red")
+lines(colMeans(lambda_counter), col="blue")
+
+plot(alpha0,type="l")
+plot(alpha1,type="l")
+
+rr_combined<-rep(NA,
+                times = nrow(lambda))
+for(j in 1:nrow(lambda)){
+  rr_combined[j]<-sum(lambda[j, (n_pre + 13):(n)])/sum(lambda_counter[j, (n_pre + 13):(n)])
+}
+hist(rr_combined)
+#print(c(mean(rr_combined), quantile(rr_combined, c(0.025, 0.975))))
+print(c(median(rr_combined), hdi(rr_combined, credMass = 0.95)))
+print(plot(rr_combined, type="l", 
+           main=paste("Traceplot for RR"), 
+           xlab="Iterations", ylab="RR", bty="l"))
+```
+
+## PCAs: take first two components
+```{r}
+#Should be already scaled, but doesn't hurt...
+x.scale1<-apply(covars.log,2, function(z) scale(z)) 
+  
+y.aware.scale<- apply(x.scale1, 2, function(x1){
+    log.y.pre.scale<- scale(log(Xmat$J12_J18_prim+0.5))
+    log.y.pre.scale<-log.y.pre.scale[!is.na(log.y.pre.scale)]
+    reg<-lm(log.y.pre.scale~x1)
+    slope<- reg$coefficients[2]
+    x.scale<-x1*slope - mean(x1*slope)
+    return(x.scale)
+})
+pca1<- prcomp(y.aware.scale, center = FALSE,scale. = FALSE)
+pcs<-pca1$x
+pcs<-apply(pcs,2, scale) #SCALE THE PCS prior to regression!
+matplot(pcs[,1:5], type='l')
+x.pca<-pcs[,1:2]
+```
+2. Run SC+ITS model with first 2 PCAs
+```{r}
+posterior_samples<-SC_ITS_model(burnin=5000,
+                                samples=200000,
+                                thin=50,
+                                chains=1,
+                                n_full=n,
+                                n_modeling=n_pre,
+                                y_modeling=y,
+                                offset=offset,
+                                x=x.pca,
+                                z=z,
+                                regularize=0
+                                )
+
+saveRDS(posterior_samples,"./Results/posterior_samples_SCITS_PCS.RDS")
+```
+
+## Post-processing
+```{r}
+rr<-posterior_samples[[1]][,substr(colnames(posterior_samples[[1]]), 1, 2) == "rr"]
+lambda<-posterior_samples[[1]][,substr(colnames(posterior_samples[[1]]), 1, 7) == "lambda["]
+lambda_counter<-posterior_samples[[1]][,substr(colnames(posterior_samples[[1]]), 1, 7) == "lambda_"]
+alpha0<-posterior_samples[[1]][,substr(colnames(posterior_samples[[1]]), 1, 6) == "alpha0"]
+alpha1<-posterior_samples[[1]][,substr(colnames(posterior_samples[[1]]), 1, 6) == "alpha1"]
+
+##Plot outputs
+
+plot(y, type="l")
+lines(colMeans(lambda), col="red")
+lines(colMeans(lambda_counter), col="blue")
+
+plot(alpha0,type="l")
+plot(alpha1,type="l")
+
+rr_combined<-rep(NA,
+                times = nrow(lambda))
+for(j in 1:nrow(lambda)){
+  rr_combined[j]<-sum(lambda[j, (n_pre + 13):(n)])/sum(lambda_counter[j, (n_pre + 13):(n)])
+}
+hist(rr_combined)
+#print(c(mean(rr_combined), quantile(rr_combined, c(0.025, 0.975))))
+print(c(median(rr_combined), hdi(rr_combined, credMass = 0.95)))
+print(plot(rr_combined, type="l", 
+           main=paste("Traceplot for RR"), 
+           xlab="Iterations", ylab="RR", bty="l"))
+```
+
+
+
+## Define variables for DLM model
+```{r}
+# Reformat the dataset
+ y <- a2$J12_J18_prim
+ y.pre <- y[a2$monthdate < post_period[1] ]
+ ds2 <- cbind.data.frame(y,a2$monthdate,x)
+ names(ds2) <- c('J12_18', "date","PC1","PC2")
+ ds2.pre <- ds2[a2$monthdate < post_period[1],]
+ ds3 <- ds2
+ ds3$J12_18[ds3$date >= post_period[1]] <- NA
+```
+
+3. Run DLM model with first 2 PCAs
+```{r}
+results_temporal_lags<-temporal_lags(burnin = 5000,
+                                        samples = 500000,
+                                        thin = 50,
+                                        chains = 1,
+                                        regularize = 0,
+                                        dic = 0,  
+                                        n_full = n,
+                                        n_modeling = n_pre,
+                                        y_modeling = ds3$J12_18,
+                                        offset = offset, ## change to acm
+                                        z = month.mat,
+                                        x = x.pca,
+                                        lag = 6)
+saveRDS(results_temporal_lags,"./Results/posterior_samples_DLM.RDS")
+```
+
+```{r}
+# Combine posterior distributions from two chains
+post_comb <- rbind(results_temporal_lags[[1]][[1]])
+
+#-----*-----*-----*-----#
+# Median & 95% CrIs
+#-----*-----*-----*-----#
+# Calculate the median for each tracked parameter
+post_means <- apply(post_comb, 2, median)
+sample.labs <- names(post_means)
+names(post_means) <- sample.labs
+# Calculate 95% CrIs for each tracked parameter
+ci <- t(hdi(post_comb, credMass = 0.95))
+row.names(ci) <- sample.labs
+# Create a table for median and 95% CrIs
+post.combo <- cbind(post_means, ci)
+#-----*-----*-----*-----#
+# Specific parameters
+#-----*-----*-----*-----#
+# Y_pred
+post.combo.Ypred <- post.combo[substr(names(post_means),1,6)=="Y_pred",]
+
+
+# beta
+betas <- post_comb[,substr(colnames(post_comb), 1, 4) == "beta"]
+plot(betas[,1],type="l")
+plot(betas[,2],type="l")
+beta <- post.combo[substr(names(post_means),1,4)=="beta",]
+beta <- as.data.frame(beta)
+#-----*-----*-----*-----#
+# Time series plot J12-18 
+#-----*-----*-----*-----#
+# Date
+#post_date <- seq.Date(from=post_period[1], to=post_period[2], by="month")
+# Create a time series plot for J12-18 in the post-PCV period
+#print(plot(post.combo.Ypred[,1] ~ post_date, type="l", 
+#           main=paste("J12_18 in post-PCV"), xlab="Month", ylab="Counts",
+#          ylim=c(0, max(post.combo.Ypred)), bty="l")) # Median for the counterfactual J12-18
+#  lines(post.combo.Ypred[,2] ~ post_date, lty=2, col="red") # Lower bound for 95% CrI
+#  lines(post.combo.Ypred[,3] ~ post_date, lty=2, col="red") # Upper bound for 95% CrI
+ # points(a2$J12_J18_prim[a2$monthdate >= post_period[1]] ~ post_date, pch=16) # 
+
+#-----*-----*-----*-----#
+# Rate ratio (each month)
+#-----*-----*-----*-----#
+  
+# Calculate rate ratio for each month
+# (Add 0.5 to avoid zero as we take log next)
+rr <- (a2$J12_J18_prim[a2$monthdate >= post_period[1]] + 0.5)/(post.combo.Ypred + 0.5)
+  
+# Log transform
+log_rr <- log(rr)
+  
+# Plot for RR in each mont
+#print(plot(log_rr[,1] ~ post_date, type="l", 
+#            main=paste("Log(RR) in post-PCV"), 
+#            xlab="Month", ylab="log(RR)",
+#            ylim=c(range(log_rr)), bty="l")) # median
+#  lines(log_rr[,2] ~ post_date, lty=2, col="red") # lower bound for 95% CrI
+#  lines(log_rr[,3] ~ post_date, lty=2, col="red") # upper bound for 95% CrI
+#  abline(h=0, col='darkgrey') # Reference line for RR=1 (logRR=1)
+  
+#-----*-----*-----*-----#
+# Rate ratio (evaluation period)
+#-----*-----*-----*-----#
+  
+# Extract posterior samples for Y_pred
+post.samples <- post_comb[,substr(colnames(post_comb),1,6)=="Y_pred"]
+  
+# Remove posterior samples in the transition period 
+# (first 12 months (i.e., 12 columns) in the post PCV period)
+post.samples.eval <- post.samples[,-c(1:12)]
+  
+# Calculate the cumulative number of counterfactual J12-18 in the evaluation period 
+post.eval.sum <- apply(post.samples.eval, 1, sum)
+  
+# Calculate the cumulative number of observed J12-18 in the evaluation period
+obs.eval.sum <- sum(a2$J12_J18_prim[a2$monthdate >= post_period[1]][-c(1:12)])
+  
+# Calculate RR for each iteration
+rr.eval <- obs.eval.sum / post.eval.sum
+  
+# Calculate median and 95% CrI for RR
+#rr.q<- quantile(rr.eval, probs=c(0.025, 0.5, 0.975))
+rr.q <- c(hdi(rr.eval, credMass = 0.95)[1],median(rr.eval),hdi(rr.eval, credMass = 0.95)[2])
+  
+# Traceplot
+print(plot(rr.eval, type="l", 
+           main=paste("Traceplot for RR"), 
+            xlab="Iterations", ylab="RR", bty="l"))
+  
+  #-----*-----*-----*-----#
+  # Gammas
+  #-----*-----*-----*-----#
+  
+  # post.samples1 <- post_comb[,substr(colnames(post_comb),1,5)=="gamma"]
+  # par(mfrow=c(2,3))
+  # for (g in 1:ncol(post.samples1)) {
+  #   print(plot(post.samples1[,g], type="l", ylab="Gamma", bty="l"))
+  # }
+
+```
+
+
+
+
+
+
+
+
+
+
+```{r}
+### Specify seasonality and define z
+seas.vars<- c('intercept','sin12','cos12','sin6','cos6' )
+ds$intercept <- rep(1,times=nrow(ds))
+ds$time_index<-1:nrow(ds)
+#ds$time_index <- ds$time_index / max(ds$time_index)
+ds$sin12<-sin(2*pi* ds$time_index/12)
+ds$cos12<-cos(2*pi* ds$time_index/12)
+ds$sin6<-sin(2*pi* ds$time_index/6)
+ds$cos6<-cos(2*pi* ds$time_index/6)
+z<-ds[,seas.vars]
+### Take pre-intervention period
+ds.pre<-ds[ds[,"monthdate"]<post_period[1] ,]
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
