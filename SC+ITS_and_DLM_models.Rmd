@@ -164,7 +164,7 @@ y.aware.scale<- apply(x.scale1, 2, function(x1){
 pca1<- prcomp(y.aware.scale, center = FALSE,scale. = FALSE)
 pcs<-pca1$x
 pcs<-apply(pcs,2, scale) #SCALE THE PCS prior to regression!
-matplot(pcs[,1:5], type='l')
+matplot(pcs[,1:2], type='l')
 x.pca<-pcs[,1:2]
 ```
 2. Run SC+ITS model with first 2 PCAs
@@ -177,7 +177,7 @@ posterior_samples<-SC_ITS_model(burnin=5000,
                                 n_modeling=n_pre,
                                 y_modeling=y,
                                 offset=offset,
-                                x=x.pca,
+                                x=x.pca, ##if we have one dim only as.matrix() 
                                 z=z,
                                 regularize=0
                                 )
@@ -222,7 +222,7 @@ print(plot(rr_combined, type="l",
 # Reformat the dataset
  y <- a2$J12_J18_prim
  y.pre <- y[a2$monthdate < post_period[1] ]
- ds2 <- cbind.data.frame(y,a2$monthdate,x)
+ ds2 <- cbind.data.frame(y,a2$monthdate,x.pca)
  names(ds2) <- c('J12_18', "date","PC1","PC2")
  ds2.pre <- ds2[a2$monthdate < post_period[1],]
  ds3 <- ds2
@@ -232,7 +232,7 @@ print(plot(rr_combined, type="l",
 3. Run DLM model with first 2 PCAs
 ```{r}
 results_temporal_lags<-temporal_lags(burnin = 5000,
-                                        samples = 500000,
+                                        samples = 200000,
                                         thin = 50,
                                         chains = 1,
                                         regularize = 0,
